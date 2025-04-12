@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Game</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        .game-container {
+            width: 90vmin;
+            max-width: 600px;
+            margin: 10px;
+            position: relative;
+        }
+        .score-panel {
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+        .grid {
+            display: grid;
+            grid-template: repeat(20, 1fr) / repeat(20, 1fr);
+            width: 100%;
+            aspect-ratio: 1;
+            background-color: #e0e0e0;
+            border: 2px solid #000;
+            position: relative;
+            box-sizing: border-box;
+        }
+        .cell {
+            border: 1px solid #b3b3b3;
+            background-color: #fff;
+            box-sizing: border-box;
+        }
+        .snake {
+            background-color: #000;
+        }
+        .food {
+            background-color: #ff0;
+            border: 3px solid #000;
+            border-radius: 50%;
+            position: relative;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+        .food::before {
+            content: '';
+            position: absolute;
+            top: 15%;
+            left: 50%;
+            width: 25%;
+            height: 40%;
+            background: #fff;
+            transform: translateX(-50%);
+        }
+        .food::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            width: 50%;
+            height: 20%;
+            background: #666;
+            transform: translateX(-50%);
+            border-top-left-radius: 50%;
+            border-top-right-radius: 50%;
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+            justify-content: center;
+            align-items: center;
+        }
+        .controls button, .controls label {
+            padding: 8px 16px;
+            font-size: 1em;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .speed-display {
+            text-align: center;
+            margin-top: 5px;
+        }
+        .instructions {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #333;
+        }
+        .game-over {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 2em;
+            text-align: center;
+        }
+        .game-over button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 0.8em;
+            cursor: pointer;
+        }
+        .game-over p {
+            font-size: 0.6em;
+            margin-top: 10px;
+        }
+        .joystick {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            width: 80px;
+            height: 80px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 50%;
+            touch-action: none;
+            z-index: 10;
+        }
+        .joystick.left-handed {
+            right: auto;
+            left: 10px;
+        }
+        .thumb {
+            width: 30px;
+            height: 30px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .mode-selector {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="score-panel">
+            <span>High Score: <span id="high-score">0</span></span>
+            <span>Score: <span id="score">0</span></span>
+        </div>
+        <div class="grid" id="grid">
+            <div class="joystick" id="joystick">
+                <div class="thumb" id="thumb"></div>
+            </div>
+        </div>
+        <div class="speed-display">Speed: <span id="speed">200</span> ms</div>
+        <div class="controls">
+            <button onclick="togglePause()">
+                <span id="pause-icon">⏸️</span>
+                <span id="pause-text">Pause</span>
+            </button>
+            <button onclick="toggleMute()">
+                <span id="mute-icon">🔊</span>
+                <span id="mute-text">Mute</span>
+            </button>
+            <button onclick="toggleJoystick()">Left-Handed</button>
+            <div class="mode-selector">
+                <label><input type="radio" name="mode" value="static" onchange="setMode(false)"> Static Speed</label>
+                <label><input type="radio" name="mode" value="variable" checked onchange="setMode(true)"> Variable Speed</label>
+            </div>
+        </div>
+        <div class="instructions">
+            Use arrow keys or joystick to move. Eat light bulbs to grow and score. Avoid walls and yourself!
+        </div>
+    </div>
+    <div class="game-over" id="game-over">
+        <div>Game Over</div>
+        <button onclick="restart()">Restart</button>
+        <p>Press Space or Double-Tap to Restart</p>
+    </div>
+    <audio id="bg-music" loop src="background.mp3"></audio>
+    <audio id="eat-sound" src="background_eat.mp3"></audio>
+    <audio id="crash-sound" src="background_crash.mp3"></audio>
+
+    <script>
+        const grid = document.getElementById('grid');
+        const scoreDisplay = document.getElementById('score');
+        const highScoreDisplay = document.getElementById('high-score');
+        const speedDisplay = document.getElementById('speed');
+        const gameOverScreen = document.getElementById('game-over');
+        const joystick = document.getElementById('joystick');
+        const thumb = document.getElementById('thumb');
+        const pauseIcon = document.getElementById('pause-icon');
+        const pauseText = document.getElementById('pause-text');
+        const muteIcon = document.getElementById('mute-icon');
+        const muteText = document.getElementById('mute-text');
+        const GRID_SIZE = 20;
+        let snake = [{x: 10, y: 10}];
+        let food = {x: 5, y: 5};
+        let direction = 'right';
+        let score = 0;
+        let highScore = localStorage.getItem('highScore') || 0;
+        let speed = 200;
+        let basePoints = 10;
+        let gameLoop;
+        let isPaused = false;
+        let isMuted = false;
+        let isVariableSpeed = true;
+        let foodCount = 0;
+        let rainbowColors = ['#000', '#f00', '#0f0', '#00f', '#ff0', '#f0f', '#0ff'];
+        let snakeColors = ['#000'];
+        highScoreDisplay.textContent = highScore;
+
+        // Initialize grid
+        for (let y = 0; y < GRID_SIZE; y++) {
+            for (let x = 0; x < GRID_SIZE; x++) {
+                const cell = document.createElement('div');
+                cell.classList.add('cell');
+                cell.dataset.x = x;
+                cell.dataset.y = y;
+                grid.appendChild(cell);
+            }
+        }
+
+        function updateGrid() {
+            const cells = grid.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                cell.className = 'cell';
+                cell.style.backgroundColor = '#fff';
+            });
+            snake.forEach((segment, index) => {
+                const cell = grid.querySelector(`.cell[data-x="${segment.x}"][data-y="${segment.y}"]`);
+                if (cell) {
+                    cell.classList.add('snake');
+                    cell.style.backgroundColor = snakeColors[Math.floor(index / 3) % snakeColors.length];
+                }
+            });
+            const foodCell = grid.querySelector(`.cell[data-x="${food.x}"][data-y="${food.y}"]`);
+            if (foodCell) {
+                foodCell.classList.add('food');
+                foodCell.style.backgroundColor = '#ff0';
+            }
+        }
+
+        function moveSnake() {
+            if (isPaused) return;
+
+            const head = {...snake[0]};
+            if (direction === 'right') head.x++;
+            else if (direction === 'left') head.x--;
+            else if (direction === 'up') head.y--;
+            else if (direction === 'down') head.y++;
+
+            // Check collision
+            if (head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE ||
+                snake.some(segment => segment.x === head.x && segment.y === head.y)) {
+                endGame();
+                return;
+            }
+
+            snake.unshift(head);
+
+            // Check food
+            if (head.x === food.x && head.y === food.y) {
+                foodCount++;
+                const speedFactor = isVariableSpeed ? Math.floor(200 / speed) : 1;
+                score += basePoints + speedFactor;
+                scoreDisplay.textContent = score;
+                if (!isMuted) {
+                    const eatSound = document.getElementById('eat-sound');
+                    eatSound.play().catch(() => {});
+                }
+                spawnFood();
+                if (foodCount % 3 === 0) {
+                    snakeColors.push(rainbowColors[(foodCount / 3) % rainbowColors.length]);
+                    if (isVariableSpeed) {
+                        speed = Math.max(50, speed * 0.75);
+                        basePoints += 5;
+                        speedDisplay.textContent = Math.round(speed);
+                        clearInterval(gameLoop);
+                        gameLoop = setInterval(moveSnake, speed);
+                    }
+                }
+            } else {
+                snake.pop();
+            }
+
+            updateGrid();
+        }
+
+        function spawnFood() {
+            do {
+                food = {
+                    x: Math.floor(Math.random() * GRID_SIZE),
+                    y: Math.floor(Math.random() * GRID_SIZE)
+                };
+            } while (snake.some(segment => segment.x === food.x && segment.y === food.y));
+        }
+
+        function endGame() {
+            clearInterval(gameLoop);
+            if (!isMuted) {
+                const crashSound = document.getElementById('crash-sound');
+                crashSound.play().catch(() => {});
+            }
+            gameOverScreen.style.display = 'flex';
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('highScore', highScore);
+                highScoreDisplay.textContent = highScore;
+            }
+        }
+
+        function restart() {
+            snake = [{x: 10, y: 10}];
+            direction = 'right';
+            score = 0;
+            foodCount = 0;
+            speed = 200;
+            basePoints = 10;
+            snakeColors = ['#000'];
+            scoreDisplay.textContent = score;
+            speedDisplay.textContent = speed;
+            gameOverScreen.style.display = 'none';
+            isPaused = false;
+            spawnFood();
+            updateGrid();
+            clearInterval(gameLoop);
+            gameLoop = setInterval(moveSnake, speed);
+            if (!isMuted) {
+                const bgMusic = document.getElementById('bg-music');
+                bgMusic.play().catch(() => {});
+            }
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            pauseIcon.textContent = isPaused ? '▶️' : '⏸️';
+            pauseText.textContent = isPaused ? 'Resume' : 'Pause';
+            if (isPaused) {
+                document.getElementById('bg-music').pause();
+            } else {
+                if (!isMuted) {
+                    document.getElementById('bg-music').play().catch(() => {});
+                }
+            }
+        }
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            muteIcon.textContent = isMuted ? '🔇' : '🔊';
+            muteText.textContent = isMuted ? 'Unmute' : 'Mute';
+            document.getElementById('bg-music').muted = isMuted;
+        }
+
+        function setMode(variable) {
+            isVariableSpeed = variable;
+            if (!isVariableSpeed) {
+                speed = 200;
+                basePoints = 10;
+                speedDisplay.textContent = speed;
+                clearInterval(gameLoop);
+                gameLoop = setInterval(moveSnake, speed);
+            }
+        }
+
+        function toggleJoystick() {
+            joystick.classList.toggle('left-handed');
+            this.textContent = joystick.classList.contains('left-handed') ? 'Right-Handed' : 'Left-Handed';
+        }
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp' && direction !== 'down') direction = 'up';
+            else if (e.key === 'ArrowDown' && direction !== 'up') direction = 'down';
+            else if (e.key === 'ArrowLeft' && direction !== 'right') direction = 'left';
+            else if (e.key === 'ArrowRight' && direction !== 'left') direction = 'right';
+            else if (e.key === ' ' && gameOverScreen.style.display === 'flex') restart();
+        });
+
+        // Joystick controls
+        let isDragging = false;
+        joystick.addEventListener('touchstart', (e) => {
+            isDragging = true;
+            e.preventDefault();
+        });
+        joystick.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            const rect = joystick.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            const touch = e.touches[0];
+            const dx = touch.clientX - centerX;
+            const dy = touch.clientY - centerY;
+            const angle = Math.atan2(dy, dx);
+            const distance = Math.min(rect.width / 2, Math.sqrt(dx * dx + dy * dy));
+            thumb.style.left = `${50 + (distance * Math.cos(angle) / rect.width * 100)}%`;
+            thumb.style.top = `${50 + (distance * Math.sin(angle) / rect.width * 100)}%`;
+
+            // Determine direction
+            const absAngle = Math.abs(angle * 180 / Math.PI);
+            if (absAngle < 45 || absAngle > 135) {
+                direction = dx > 0 && direction !== 'left' ? 'right' : direction !== 'right' ? 'left' : direction;
+            } else {
+                direction = dy < 0 && direction !== 'down' ? 'up' : direction !== 'up' ? 'down' : direction;
+            }
+        });
+        joystick.addEventListener('touchend', () => {
+            isDragging = false;
+            thumb.style.left = '50%';
+            thumb.style.top = '50%';
+        });
+
+        // Double-tap to restart
+        let lastTap = 0;
+        grid.addEventListener('touchend', (e) => {
+            const now = new Date().getTime();
+            if (now - lastTap < 300 && gameOverScreen.style.display === 'flex') {
+                restart();
+            }
+            lastTap = now;
+        });
+
+        // Start game
+        updateGrid();
+        gameLoop = setInterval(moveSnake, speed);
+        if (!isMuted) {
+            document.getElementById('bg-music').play().catch(() => {});
+        }
+    </script>
+</body>
+</html>
